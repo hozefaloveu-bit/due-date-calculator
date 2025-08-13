@@ -1,0 +1,78 @@
+name: Build and Release APK
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git zip unzip openjdk-17-jdk python3-pip \
+            libffi-dev libssl-dev libsqlite3-dev libjpeg-dev zlib1g-dev
+
+      - name: Install Buildozer
+        run: pip install buildozer cython==0.29.34 # Pinning cython version for compatibility
+
+      - name: Install Android SDK & NDK
+        run: |
+          # Set up SDK directory and navigate into it
+          SDK_ROOT="$HOME/android-sdk"
+          mkdir -p "$SDK_ROOT"
+          cd "$SDK_ROOT"
+          
+          # Download and unzip command-line tools
+          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
+          unzip -d cmdline-tools cmdline-tools.zip
+          
+          # This command renames the extracted folder to 'latest'
+          # creating the required path structure: .../cmdline-tools/latest/
+          mv cmdline-tools/cmdline-tools cmdline-tools/latest
+          
+          # Set and export environment variables for SDK Manager
+          export ANDROID_HOME="$SDK_ROOT"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+          
+          # Explicitly accept all licenses before installing components
+          yes | sdkmanager --licenses
+          
+          # Now, install the required SDK components
+          sdkmanager "platform-tools" "platforms;android-33" "build-tools;36.0.0" "ndk;25.1.8937393" "cmake;3.22.1"
+          
+          # Persist environment variables for subsequent steps in the job
+          echo "ANDROID_HOME=$SDK_ROOT" >> $GITHUB_ENV
+          echo "$SDK_ROOT/platform-tools" >> $GITHUB_PATH
+          echo "$SDK_ROOT/build-tools/36.0.0" >> $GITHUB_PATH
+          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+
+      - name: Build APK
+        run: buildozer android release
+
+      - name: Rename APK with date
+        run: |
+          mkdir -p release-apk
+          DATE=$(date +'%Y-%m-%d')
+          mv bin/*.apk release-apk/DueDateCalculator-${DATE}.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v0.0.${{ github.run_number }}
+          name: Release v0.0.${{ github.run_number }}
+          files: release-apk/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
