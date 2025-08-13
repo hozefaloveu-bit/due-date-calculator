@@ -26,34 +26,49 @@ jobs:
             libffi-dev libssl-dev libsqlite3-dev libjpeg-dev zlib1g-dev
 
       - name: Install Buildozer
-        run: pip install buildozer cython
+        run: pip install buildozer cython==0.29.34 # Pinning cython version for compatibility
 
       - name: Install Android SDK & NDK
         run: |
-          mkdir -p "$HOME/android-sdk"
-          cd "$HOME/android-sdk"
+          # Set up SDK directory and navigate into it
+          SDK_ROOT="$HOME/android-sdk"
+          mkdir -p "$SDK_ROOT"
+          cd "$SDK_ROOT"
+          
+          # Download and unzip command-line tools
           wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
           unzip cmdline-tools.zip
           
-          # This is the corrected section
-          mkdir -p cmdline-tools/latest
-          mv cmdline-tools/cmdline-tools/* cmdline-tools/latest/
+          # --- FIX IS HERE ---
+          # The original 'mv' command had a wrong path.
+          # This corrected sequence renames the extracted 'cmdline-tools' folder to 'latest'
+          # and places it inside a new parent 'cmdline-tools' directory to create the
+          # structure expected by the rest of the script: .../cmdline-tools/latest/
+          mv cmdline-tools latest
+          mkdir cmdline-tools
+          mv latest cmdline-tools/
+          # --- END OF FIX ---
           
-          export ANDROID_HOME=$HOME/android-sdk
-          export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH
+          # Set and export environment variables for SDK Manager
+          export ANDROID_HOME="$SDK_ROOT"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+          
+          # Accept licenses and install required SDK components
           yes | sdkmanager --licenses
           sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2" "ndk;25.1.8937393" "cmake;3.22.1"
-          echo "ANDROID_HOME=$HOME/android-sdk" >> $GITHUB_ENV
-          echo "$HOME/android-sdk/platform-tools" >> $GITHUB_PATH
-          echo "$HOME/android-sdk/build-tools/33.0.2" >> $GITHUB_PATH
-          echo "$HOME/android-sdk/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          
+          # Persist environment variables for subsequent steps in the job
+          echo "ANDROID_HOME=$SDK_ROOT" >> $GITHUB_ENV
+          echo "$SDK_ROOT/platform-tools" >> $GITHUB_PATH
+          echo "$SDK_ROOT/build-tools/33.0.2" >> $GITHUB_PATH
+          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
 
       - name: Build APK
         run: buildozer android release
 
       - name: Rename APK with date
         run: |
-          mkdir release-apk
+          mkdir -p release-apk
           DATE=$(date +'%Y-%m-%d')
           mv bin/*.apk release-apk/DueDateCalculator-${DATE}.apk
 
