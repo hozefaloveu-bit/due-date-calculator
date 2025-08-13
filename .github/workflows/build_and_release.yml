@@ -11,6 +11,20 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
+      - name: Debug - Environment Info
+        run: |
+          echo "=== SYSTEM INFO ==="
+          uname -a
+          lsb_release -a || true
+          echo "=== PYTHON VERSION ==="
+          python3 --version
+          echo "=== CURRENT DIR ==="
+          pwd
+          echo "=== DIR LIST ==="
+          ls -la
+          echo "=== ENV VARIABLES (SANITIZED) ==="
+          env | grep -v "TOKEN"
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -42,7 +56,6 @@ jobs:
             libbz2-dev \
             libexpat1-dev \
             liblzma-dev \
-            libffi-dev \
             pkg-config
 
       - name: Install Buildozer
