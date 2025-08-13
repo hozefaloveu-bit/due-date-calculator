@@ -1,10 +1,12 @@
-name: Build and Release APK
+name: Build APK (Debug or Release)
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
+    inputs:
+      build_type:
+        description: "Choose build type: debug or release"
+        required: true
+        default: debug
 
 jobs:
   build:
@@ -12,7 +14,7 @@ jobs:
 
     steps:
       - name: Start job
-        run: echo "Starting APK Build & Release..."
+        run: echo "🚀 Starting APK build: ${{ github.event.inputs.build_type }}"
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -53,41 +55,53 @@ jobs:
         run: |
           export ANDROID_HOME="$HOME/android-sdk"
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/33.0.2:$PATH"
-          echo "Checking AIDL..."
-          which aidl || { echo "AIDL not found in PATH"; exit 1; }
-          buildozer android release
+          echo "🔍 Checking AIDL..."
+          which aidl || { echo "❌ AIDL not found in PATH"; exit 1; }
+          if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
+            buildozer android release
+          else
+            buildozer android debug
+          fi
 
       - name: Verify APK output
         run: |
-          echo "Listing bin/:"
-          ls -l bin || true
+          echo "📂 Checking APK output..."
+          ls -l bin || echo "❌ bin/ folder not found!"
           APK_COUNT=$(ls bin/*.apk 2>/dev/null | wc -l)
           if [ "$APK_COUNT" -eq 0 ]; then
-            echo "No APK found in bin/ — build may have failed."
+            echo "❌ No APK found in bin/ — build may have failed."
             exit 1
           fi
 
       - name: Rename APK with date
         run: |
-          mkdir -p release-apk
+          mkdir -p build-apk
           DATE=$(date +'%Y-%m-%d')
-          VERSION="v${GITHUB_RUN_NUMBER}"
+          VERSION="${{ github.event.inputs.build_type }}-${GITHUB_RUN_NUMBER}"
           APK_NAME="DueDateCalculator-${VERSION}-${DATE}.apk"
-          mv bin/*.apk "release-apk/$APK_NAME"
-          echo "APK ready: $APK_NAME"
+          mv bin/*.apk build-apk/$APK_NAME
+          echo "✅ APK ready: $APK_NAME"
 
-      - name: Upload APK artifact
+      - name: Upload APK as Action Artifact
+        id: upload
         uses: actions/upload-artifact@v4
         with:
-          name: DueDateCalculator-Release-APK
-          path: release-apk/*.apk
+          name: DueDateCalculator-${{ github.event.inputs.build_type }}-APK
+          path: build-apk/*.apk
 
-      - name: Create GitHub Release
+      - name: Print Download Link
+        run: |
+          echo ""
+          echo "📥 **Download your APK here:**"
+          echo "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}#artifacts"
+          echo ""
+
+      - name: Create GitHub Release (only for release build)
+        if: ${{ github.event.inputs.build_type == 'release' }}
         uses: softprops/action-gh-release@v2
-        if: always()
         with:
           tag_name: v${{ github.run_number }}
           name: Release ${{ github.run_number }}
-          files: release-apk/*.apk
+          files: build-apk/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
