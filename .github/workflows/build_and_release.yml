@@ -22,121 +22,131 @@ jobs:
       GRADLE_USER_HOME: ${{ github.workspace }}/.gradle
 
     steps:
-      # 1. System setup with core utilities first
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup core system PATH
+      # 1. Core system setup with explicit PATH
+      - name: Setup system PATH
         run: |
-          echo "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" >> $GITHUB_ENV
-          echo "System PATH reset: $PATH"
+          # Set system PATH first
+          echo "PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" >> $GITHUB_ENV
+          echo "Initial PATH: $PATH"
 
-      - name: Install essential tools
+      - name: Install essential system tools
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             tar gzip unzip zip \
             ca-certificates \
             software-properties-common \
-            build-essential libncurses5-dev \
+            build-essential \
+            libncurses5-dev \
             lib32z1 lib32ncurses6 lib32stdc++6
-          echo "Essential tools installed"
+          echo "System tools installed"
 
-      - name: Verify core tools
+      # 2. Verify core utilities exist and are executable
+      - name: Verify system tools
         run: |
-          echo "Current PATH: $PATH"
-          ls -l /bin/tar /usr/bin/tar
-          which tar || echo "tar not found"
-          tar --version || exit 1
+          echo "Verifying core utilities:"
+          ls -l /bin/tar
+          ls -l /usr/bin/tar
+          /bin/tar --version || /usr/bin/tar --version || exit 1
+          echo "PATH contains: $(echo $PATH | tr ':' '\n')"
 
-      # 2. Environment setup
+      # 3. Python setup
       - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
+      # 4. Java installation
       - name: Install Java 17
         run: |
           sudo apt-get install -y openjdk-17-jdk
           JAVA_HOME=$(dirname $(dirname $(readlink -f $(which java))))
           echo "JAVA_HOME=$JAVA_HOME" >> $GITHUB_ENV
-          echo "Java installed at $JAVA_HOME"
+          echo "Java installed"
 
-      # 3. Android SDK installation
+      # 5. Android SDK installation
       - name: Install Android SDK
         run: |
           set -ex
-          # Create SDK directory
+          # Create SDK directories
           mkdir -p "$ANDROID_SDK_ROOT"
           
           # Download command line tools
           cd /tmp
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
           unzip -q commandlinetools-linux-9477386_latest.zip -d cmdline-tools
+          
+          # Move to correct location
           mv cmdline-tools "$ANDROID_SDK_ROOT/cmdline-tools"
           
-          # Set PATH for sdkmanager
-          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/bin:$PATH"
+          # Make tools executable
+          chmod -R +x "$ANDROID_SDK_ROOT/cmdline-tools/bin"
+          
+          # Update PATH
+          echo "PATH=$ANDROID_SDK_ROOT/cmdline-tools/bin:$PATH" >> $GITHUB_ENV
           
           # Accept licenses
           yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses
           
-          # Install packages
+          # Install Android packages
           sdkmanager --sdk_root="$ANDROID_SDK_ROOT" \
             "platform-tools" \
             "platforms;android-33" \
             "build-tools;33.0.2"
-            
-          # Verify installation
-          sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --list
+          
           echo "Android SDK installed"
 
-      - name: Configure Android environment
+      # 6. Configure Android environment
+      - name: Configure Android paths
         run: |
           echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
-          echo "PATH=$ANDROID_SDK_ROOT/cmdline-tools/bin:$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/build-tools/33.0.2:$PATH" >> $GITHUB_ENV
-          echo "Android environment configured"
+          echo "PATH=$ANDROID_SDK_ROOT/platform-tools:$ANDROID_SDK_ROOT/build-tools/33.0.2:$PATH" >> $GITHUB_ENV
+          echo "Android paths configured"
 
-      # 4. Python dependencies
-      - name: Install Python dependencies
+      # 7. Python dependencies
+      - name: Install Python tools
         run: |
           python -m pip install --user --upgrade pip
           python -m pip install --user buildozer cython virtualenv
           echo "$HOME/.local/bin" >> $GITHUB_PATH
-          echo "Python dependencies installed"
+          echo "Python tools installed"
 
-      # 5. Verification before build
-      - name: Verify environment
+      # 8. Final environment verification
+      - name: Verify all tools
         run: |
-          echo "=== PATH ==="
+          echo "=== System PATH ==="
           echo $PATH
           echo "=== Core tools ==="
           which tar && tar --version
-          which gzip && gzip --version
           which unzip && unzip -v
+          echo "=== Java ==="
+          which java && java -version
           echo "=== Android tools ==="
           which sdkmanager && sdkmanager --version
           which adb && adb version
-          which aidl && aidl --version
           which aapt && aapt version
           echo "=== Python tools ==="
-          which python
-          which pip
-          which buildozer
+          which python && python --version
+          which pip && pip --version
+          which buildozer && buildozer --version
 
-      # 6. Build process
+      # 9. Build process
       - name: Build APK
         run: |
           set -ex
-          buildozer init
+          # Initialize Buildozer if needed
+          if [ ! -f buildozer.spec ]; then
+            buildozer init
+          fi
           
+          # Build based on type
           if [ "$BUILD_TYPE" = "release" ]; then
             buildozer -v android release
           else
             buildozer -v android debug
           fi
-          echo "APK build completed"
 
+      # 10. Artifact handling
       - name: Prepare APK artifact
         run: |
           set -ex
@@ -150,7 +160,6 @@ jobs:
           NEW_NAME="app-$BUILD_TYPE-$GITHUB_RUN_NUMBER-$(date +'%Y%m%d').apk"
           mv "$APK_PATH" "build-apk/$NEW_NAME"
           echo "APK_NAME=$NEW_NAME" >> $GITHUB_ENV
-          echo "APK prepared: $NEW_NAME"
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
