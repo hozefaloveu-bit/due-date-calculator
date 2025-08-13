@@ -20,6 +20,7 @@ jobs:
       BUILD_TYPE: ${{ github.event.inputs.build_type || 'debug' }}
       ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
       GRADLE_USER_HOME: ${{ github.workspace }}/.gradle
+      PATH: ${{ github.workspace }}/.local/bin:$PATH
 
     steps:
       - name: Checkout code
@@ -64,8 +65,9 @@ jobs:
 
       - name: Install Python dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install buildozer cython
+          python -m pip install --user --upgrade pip
+          python -m pip install --user buildozer cython virtualenv
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Install Android SDK
         if: steps.android-sdk-cache.outputs.cache-hit != 'true'
@@ -79,10 +81,24 @@ jobs:
           ${{ env.ANDROID_SDK_ROOT }}/cmdline-tools/latest/bin/sdkmanager --sdk_root="${{ env.ANDROID_SDK_ROOT }}" \
             "platform-tools" "platforms;android-33" "build-tools;33.0.2"
 
+      - name: Verify Android tools
+        run: |
+          set -e
+          echo "PATH: $PATH"
+          echo "Android SDK path: ${{ env.ANDROID_SDK_ROOT }}"
+          ls -la ${{ env.ANDROID_SDK_ROOT }}/build-tools/33.0.2
+          which aidl || echo "AIDL not found"
+          which aapt || echo "AAPT not found"
+          which zipalign || echo "ZIPALIGN not found"
+
       - name: Build APK
         run: |
           set -e
           export PATH="${{ env.ANDROID_SDK_ROOT }}/cmdline-tools/latest/bin:${{ env.ANDROID_SDK_ROOT }}/platform-tools:${{ env.ANDROID_SDK_ROOT }}/build-tools/33.0.2:$PATH"
+          
+          echo "Python path: $(which python)"
+          echo "Buildozer path: $(which buildozer)"
+          
           if [ "${{ env.BUILD_TYPE }}" = "release" ]; then
             buildozer -v android release
           else
@@ -95,6 +111,7 @@ jobs:
           APK_PATH=$(find bin -name '*.apk' -print -quit)
           if [ -z "$APK_PATH" ]; then
             echo "Error: No APK found in bin directory"
+            ls -R bin
             exit 1
           fi
           NEW_NAME="app-${{ env.BUILD_TYPE }}-${{ github.run_number }}-$(date +'%Y%m%d').apk"
