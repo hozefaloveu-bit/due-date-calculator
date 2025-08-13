@@ -38,7 +38,7 @@ jobs:
       - name: Install AIDL and other SDK components
         run: |
           export ANDROID_HOME=${{ runner.tool_cache }}/android-sdk
-          sdkmanager --sdk_root=${ANDROID_HOME} "build-tools;33.0.2" "platform-tools" "platforms;android-33" "cmake;3.22.1"
+          sdkmanager --sdk_root=${ANDROID_HOME} "build-tools;33.0.2" "platform-tools" "platforms;android-33"
           echo "y" | sdkmanager --sdk_root=${ANDROID_HOME} --licenses
 
       - name: Build APK
