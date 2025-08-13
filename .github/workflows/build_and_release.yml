@@ -26,6 +26,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Install core utilities first
+      - name: Install essential tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            tar gzip unzip zip \  # Core archive utilities
+            ca-certificates \     # SSL certificates
+            software-properties-common
+
       - name: Set up Python 3.10
         uses: actions/setup-python@v5
         with:
@@ -55,13 +64,13 @@ jobs:
           key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
           restore-keys: buildozer-${{ runner.os }}-
 
-      - name: Install system dependencies
+      - name: Install build dependencies
         run: |
-          sudo apt-get update
           sudo apt-get install -y \
-            git zip unzip openjdk-17-jdk \
+            git openjdk-17-jdk \
             libffi-dev libssl-dev libsqlite3-dev \
-            libjpeg-dev zlib1g-dev wget
+            libjpeg-dev zlib1g-dev wget \
+            build-essential libncurses5-dev  # Additional build tools
 
       - name: Install Python dependencies
         run: |
@@ -81,23 +90,21 @@ jobs:
           ${{ env.ANDROID_SDK_ROOT }}/cmdline-tools/latest/bin/sdkmanager --sdk_root="${{ env.ANDROID_SDK_ROOT }}" \
             "platform-tools" "platforms;android-33" "build-tools;33.0.2"
 
-      - name: Verify Android tools
+      - name: Verify system tools
         run: |
-          set -e
+          echo "Checking core utilities:"
+          which tar && tar --version || echo "tar missing"
+          which gzip && gzip --version || echo "gzip missing"
+          which unzip && unzip -v || echo "unzip missing"
           echo "PATH: $PATH"
-          echo "Android SDK path: ${{ env.ANDROID_SDK_ROOT }}"
-          ls -la ${{ env.ANDROID_SDK_ROOT }}/build-tools/33.0.2
-          which aidl || echo "AIDL not found"
-          which aapt || echo "AAPT not found"
-          which zipalign || echo "ZIPALIGN not found"
 
       - name: Build APK
         run: |
           set -e
           export PATH="${{ env.ANDROID_SDK_ROOT }}/cmdline-tools/latest/bin:${{ env.ANDROID_SDK_ROOT }}/platform-tools:${{ env.ANDROID_SDK_ROOT }}/build-tools/33.0.2:$PATH"
           
-          echo "Python path: $(which python)"
-          echo "Buildozer path: $(which buildozer)"
+          echo "Python: $(which python)"
+          echo "Buildozer: $(which buildozer)"
           
           if [ "${{ env.BUILD_TYPE }}" = "release" ]; then
             buildozer -v android release
