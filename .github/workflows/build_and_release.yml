@@ -37,17 +37,11 @@ jobs:
           
           # Download and unzip command-line tools
           wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
-          unzip cmdline-tools.zip
+          unzip -d cmdline-tools cmdline-tools.zip
           
-          # --- FIX IS HERE ---
-          # The original 'mv' command had a wrong path.
-          # This corrected sequence renames the extracted 'cmdline-tools' folder to 'latest'
-          # and places it inside a new parent 'cmdline-tools' directory to create the
-          # structure expected by the rest of the script: .../cmdline-tools/latest/
-          mv cmdline-tools latest
-          mkdir cmdline-tools
-          mv latest cmdline-tools/
-          # --- END OF FIX ---
+          # This command renames the extracted folder to 'latest'
+          # creating the required path structure: .../cmdline-tools/latest/
+          mv cmdline-tools/cmdline-tools cmdline-tools/latest
           
           # Set and export environment variables for SDK Manager
           export ANDROID_HOME="$SDK_ROOT"
