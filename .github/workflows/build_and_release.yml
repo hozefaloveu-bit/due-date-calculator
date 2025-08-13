@@ -26,7 +26,10 @@ jobs:
             libffi-dev libssl-dev libsqlite3-dev libjpeg-dev zlib1g-dev
 
       - name: Install Buildozer
-        run: pip install buildozer cython==0.29.34 # Pinning cython version for compatibility
+        run: pip install buildozer cython==0.29.34
+
+      - name: Clean up old build artifacts
+        run: rm -rf .buildozer/
 
       - name: Install Android SDK & NDK
         run: |
@@ -47,7 +50,7 @@ jobs:
           export ANDROID_HOME="$SDK_ROOT"
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
           
-          # Explicitly accept all licenses before installing components y
+          # Explicitly accept all licenses before installing components
           yes | sdkmanager --licenses
           
           # Now, install the required SDK components
