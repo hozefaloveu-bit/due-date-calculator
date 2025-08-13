@@ -28,39 +28,14 @@ jobs:
       - name: Install Buildozer
         run: pip install buildozer cython==0.29.34
 
-      - name: Clean up old build artifacts
-        run: rm -rf .buildozer/
-
-      - name: Install Android SDK & NDK
-        run: |
-          # Set up SDK directory and navigate into it
-          SDK_ROOT="$HOME/android-sdk"
-          mkdir -p "$SDK_ROOT"
-          cd "$SDK_ROOT"
-          
-          # Download and unzip command-line tools
-          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
-          unzip -d cmdline-tools cmdline-tools.zip
-          
-          # This command renames the extracted folder to 'latest'
-          # creating the required path structure: .../cmdline-tools/latest/
-          mv cmdline-tools/cmdline-tools cmdline-tools/latest
-          
-          # Set and export environment variables for SDK Manager
-          export ANDROID_HOME="$SDK_ROOT"
-          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
-          
-          # Explicitly accept all licenses before installing components
-          yes | sdkmanager --licenses
-          
-          # Now, install the required SDK components, including build-tools;36.0.0
-          sdkmanager "platform-tools" "platforms;android-33" "build-tools;36.0.0" "ndk;25.1.8937393" "cmake;3.22.1"
-          
-          # Persist environment variables for subsequent steps in the job
-          echo "ANDROID_HOME=$SDK_ROOT" >> $GITHUB_ENV
-          echo "$SDK_ROOT/platform-tools" >> $GITHUB_PATH
-          echo "$SDK_ROOT/build-tools/36.0.0" >> $GITHUB_PATH
-          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+      # New step: Use the android-setup action to handle the SDK
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v2
+        with:
+          api-level: 33
+          ndk: 25.1.8937393
+          build-tools: 36.0.0
+          cmake: 3.22.1
 
       - name: Build APK
         run: buildozer android release
