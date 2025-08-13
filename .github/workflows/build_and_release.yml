@@ -9,9 +9,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     
-    env:
-      ANDROID_HOME: ${{ runner.tool_cache }}/android-sdk
-      
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -35,11 +32,13 @@ jobs:
         uses: android-actions/setup-android@v3
         with:
           api-level: 33
-          ndk: 25.1.8937393 # Required for Buildozer
+          ndk: 25.1.8937393
           build-tools: 33.0.2
 
       - name: Build APK
-        run: buildozer android release
+        run: |
+          export ANDROID_HOME=${{ runner.tool_cache }}/android-sdk
+          buildozer android release
 
       - name: Rename APK for release
         run: |
