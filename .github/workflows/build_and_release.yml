@@ -20,20 +20,27 @@ jobs:
       BUILD_TYPE: ${{ github.event.inputs.build_type || 'debug' }}
       ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
       GRADLE_USER_HOME: ${{ github.workspace }}/.gradle
-      PATH: ${{ github.workspace }}/.local/bin:$PATH
+      PATH: /usr/bin:/bin:${{ github.workspace }}/.local/bin:$PATH
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Install core utilities first
+      # Install core utilities FIRST
       - name: Install essential tools
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            tar gzip unzip zip \  # Core archive utilities
-            ca-certificates \     # SSL certificates
+            tar gzip unzip zip \
+            ca-certificates \
             software-properties-common
+          echo "System PATH: $PATH"
+
+      - name: Verify core tools
+        run: |
+          which tar && tar --version || exit 1
+          which gzip && gzip --version || exit 1
+          which unzip && unzip -v || exit 1
 
       - name: Set up Python 3.10
         uses: actions/setup-python@v5
@@ -70,7 +77,7 @@ jobs:
             git openjdk-17-jdk \
             libffi-dev libssl-dev libsqlite3-dev \
             libjpeg-dev zlib1g-dev wget \
-            build-essential libncurses5-dev  # Additional build tools
+            build-essential libncurses5-dev
 
       - name: Install Python dependencies
         run: |
@@ -81,7 +88,7 @@ jobs:
       - name: Install Android SDK
         if: steps.android-sdk-cache.outputs.cache-hit != 'true'
         run: |
-          set -e
+          set -ex
           mkdir -p "${{ env.ANDROID_SDK_ROOT }}/cmdline-tools"
           cd "${{ env.ANDROID_SDK_ROOT }}/cmdline-tools"
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
@@ -90,21 +97,23 @@ jobs:
           ${{ env.ANDROID_SDK_ROOT }}/cmdline-tools/latest/bin/sdkmanager --sdk_root="${{ env.ANDROID_SDK_ROOT }}" \
             "platform-tools" "platforms;android-33" "build-tools;33.0.2"
 
-      - name: Verify system tools
+      - name: Verify Android tools
         run: |
-          echo "Checking core utilities:"
-          which tar && tar --version || echo "tar missing"
-          which gzip && gzip --version || echo "gzip missing"
-          which unzip && unzip -v || echo "unzip missing"
-          echo "PATH: $PATH"
+          set -ex
+          echo "System PATH: $PATH"
+          echo "Android tools:"
+          ls -la ${{ env.ANDROID_SDK_ROOT }}/build-tools/33.0.2
+          which aidl || { echo "AIDL missing"; exit 1; }
+          which aapt || { echo "AAPT missing"; exit 1; }
 
       - name: Build APK
         run: |
-          set -e
+          set -ex
           export PATH="${{ env.ANDROID_SDK_ROOT }}/cmdline-tools/latest/bin:${{ env.ANDROID_SDK_ROOT }}/platform-tools:${{ env.ANDROID_SDK_ROOT }}/build-tools/33.0.2:$PATH"
           
           echo "Python: $(which python)"
           echo "Buildozer: $(which buildozer)"
+          echo "Tar: $(which tar)"
           
           if [ "${{ env.BUILD_TYPE }}" = "release" ]; then
             buildozer -v android release
@@ -114,6 +123,7 @@ jobs:
 
       - name: Prepare APK artifact
         run: |
+          set -ex
           mkdir -p build-apk
           APK_PATH=$(find bin -name '*.apk' -print -quit)
           if [ -z "$APK_PATH" ]; then
