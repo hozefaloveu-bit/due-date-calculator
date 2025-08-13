@@ -1,9 +1,16 @@
-name: Build and Release APK
+name: Build APK (Debug or Release)
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: "Select build type"
+        required: true
+        default: "debug"
+        type: choice
+        options:
+          - debug
+          - release
 
 jobs:
   build:
@@ -11,7 +18,7 @@ jobs:
 
     steps:
       - name: Start job
-        run: echo "🚀 Starting APK Build & Release..."
+        run: echo "🚀 Starting APK build: ${{ github.event.inputs.build_type }}"
 
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -51,4 +58,46 @@ jobs:
       - name: Build APK
         run: |
           export ANDROID_HOME=$HOME/android-sdk
-          export PATH=$ANDROID
+          export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/33.0.2:$PATH
+          echo "🔍 Checking AIDL..."
+          which aidl || { echo "❌ AIDL not found in PATH"; exit 1; }
+          if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
+            buildozer android release
+          else
+            buildozer android debug
+          fi
+
+      - name: Verify APK output
+        run: |
+          echo "📂 Checking APK output..."
+          ls -l bin || echo "❌ bin/ folder not found!"
+          APK_COUNT=$(ls bin/*.apk 2>/dev/null | wc -l)
+          if [ "$APK_COUNT" -eq 0 ]; then
+            echo "❌ No APK found in bin/ — build may have failed."
+            exit 1
+          fi
+
+      - name: Rename APK with date
+        run: |
+          mkdir -p build-apk
+          DATE=$(date +'%Y-%m-%d')
+          VERSION="${{ github.event.inputs.build_type }}-${GITHUB_RUN_NUMBER}"
+          APK_NAME="DueDateCalculator-${VERSION}-${DATE}.apk"
+          mv bin/*.apk build-apk/$APK_NAME
+          echo "✅ APK ready: $APK_NAME"
+
+      - name: Upload APK as Action Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: DueDateCalculator-${{ github.event.inputs.build_type }}-APK
+          path: build-apk/*.apk
+
+      - name: Create GitHub Release (only for release build)
+        if: ${{ github.event.inputs.build_type == 'release' }}
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Release ${{ github.run_number }}
+          files: build-apk/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
