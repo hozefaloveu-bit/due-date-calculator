@@ -53,7 +53,7 @@ jobs:
           # Explicitly accept all licenses before installing components
           yes | sdkmanager --licenses
           
-          # Now, install the required SDK components
+          # Now, install the required SDK components, including build-tools;36.0.0
           sdkmanager "platform-tools" "platforms;android-33" "build-tools;36.0.0" "ndk;25.1.8937393" "cmake;3.22.1"
           
           # Persist environment variables for subsequent steps in the job
