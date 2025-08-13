@@ -7,7 +7,6 @@ on:
         description: "Select build type"
         required: true
         default: "debug"
-        type: choice
         options:
           - debug
           - release
