@@ -47,8 +47,10 @@ jobs:
           export ANDROID_HOME="$SDK_ROOT"
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
           
-          # Accept licenses and install required SDK components
+          # Explicitly accept all licenses before installing components
           yes | sdkmanager --licenses
+          
+          # Now, install the required SDK components
           sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2" "ndk;25.1.8937393" "cmake;3.22.1"
           
           # Persist environment variables for subsequent steps in the job
