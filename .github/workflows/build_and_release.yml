@@ -8,15 +8,15 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    
+    env:
+      ANDROID_HOME: ${{ runner.tool_cache }}/android-sdk
+      
     steps:
-      - name: Set up job
-        run: echo "Starting APK Build..."
-
       - name: Checkout repository
         uses: actions/checkout@v3
 
-      - name: Set up Python
+      - name: Set up Python 3.10
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
@@ -31,34 +31,27 @@ jobs:
       - name: Install Buildozer
         run: pip install buildozer cython
 
-      - name: Install Android SDK & build-tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y wget unzip
-          mkdir -p "$HOME/android-sdk"
-          cd "$HOME/android-sdk"
-          wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
-          unzip cmdline-tools.zip -d cmdline-tools
-          export ANDROID_HOME=$HOME/android-sdk
-          export PATH=$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/cmdline-tools/cmdline-tools/bin:$ANDROID_HOME/platform-tools:$PATH
-          yes | sdkmanager --sdk_root=${ANDROID_HOME} --licenses
-          sdkmanager --sdk_root=${ANDROID_HOME} "platform-tools" "platforms;android-33" "build-tools;33.0.2"
+      - name: Set up Android SDK and NDK
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 33
+          ndk: 25.1.8937393 # Required for Buildozer
+          build-tools: 33.0.2
 
       - name: Build APK
-        run: |
-          export ANDROID_HOME=$HOME/android-sdk
-          export PATH=$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/cmdline-tools/cmdline-tools/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/33.0.2:$PATH
-          buildozer android release
+        run: buildozer android release
 
-      - name: Upload APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: app-release
-          path: bin/*.apk
+      - name: Rename APK for release
+        run: |
+          mkdir release-apk
+          DATE=$(date +'%Y-%m-%d')
+          mv bin/*.apk release-apk/DueDateCalculator-${DATE}.apk
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: bin/*.apk
+          tag_name: v0.0.${{ github.run_number }}
+          name: Release v0.0.${{ github.run_number }}
+          files: release-apk/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
