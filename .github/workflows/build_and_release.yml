@@ -47,7 +47,7 @@ jobs:
           export ANDROID_HOME="$SDK_ROOT"
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
           
-          # Explicitly accept all licenses before installing components
+          # Explicitly accept all licenses before installing components yes
           yes | sdkmanager --licenses
           
           # Now, install the required SDK components
