@@ -51,4 +51,29 @@ jobs:
           buildozer android release
 
       - name: Verify APK output
-        run
+        run: |
+          echo "📂 Checking APK output..."
+          ls -l bin || echo "❌ bin/ folder not found!"
+          APK_COUNT=$(ls bin/*.apk 2>/dev/null | wc -l)
+          if [ "$APK_COUNT" -eq 0 ]; then
+            echo "❌ No APK found in bin/ — build may have failed."
+            exit 1
+          fi
+
+      - name: Rename APK with date
+        run: |
+          mkdir -p release-apk
+          DATE=$(date +'%Y-%m-%d')
+          VERSION="v${GITHUB_RUN_NUMBER}"
+          APK_NAME="DueDateCalculator-${VERSION}-${DATE}.apk"
+          mv bin/*.apk release-apk/$APK_NAME
+          echo "✅ APK ready: $APK_NAME"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Release ${{ github.run_number }}
+          files: release-apk/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
