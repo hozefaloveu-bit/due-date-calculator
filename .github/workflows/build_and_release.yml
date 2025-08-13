@@ -13,39 +13,31 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Start job
-        run: echo "🚀 Starting APK build: ${{ github.event.inputs.build_type }}"
+      - uses: actions/checkout@v4
 
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Install system dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             git zip unzip openjdk-17-jdk python3-pip \
             libffi-dev libssl-dev libsqlite3-dev libjpeg-dev zlib1g-dev wget
-
-      - name: Install Buildozer
-        run: |
-          python -m pip install --upgrade pip
+          pip install --upgrade pip
           pip install buildozer cython
 
-      - name: Install Android SDK & build-tools (AIDL fix)
+      - name: Install Android SDK (AIDL fix)
         run: |
           mkdir -p "$HOME/android-sdk/cmdline-tools"
           cd "$HOME/android-sdk/cmdline-tools"
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
           unzip -q cmdline-tools.zip -d latest
           export ANDROID_HOME="$HOME/android-sdk"
-          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
-          yes | sdkmanager --sdk_root="${ANDROID_HOME}" --licenses
-          sdkmanager --sdk_root="${ANDROID_HOME}" \
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses
+          sdkmanager --sdk_root="$ANDROID_HOME" \
             "platform-tools" \
             "platforms;android-33" \
             "build-tools;33.0.2" \
@@ -55,53 +47,23 @@ jobs:
         run: |
           export ANDROID_HOME="$HOME/android-sdk"
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/33.0.2:$PATH"
-          echo "🔍 Checking AIDL..."
-          which aidl || { echo "❌ AIDL not found in PATH"; exit 1; }
+          which aidl || { echo "❌ AIDL missing"; exit 1; }
           if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
             buildozer android release
           else
             buildozer android debug
           fi
 
-      - name: Verify APK output
-        run: |
-          echo "📂 Checking APK output..."
-          ls -l bin || echo "❌ bin/ folder not found!"
-          APK_COUNT=$(ls bin/*.apk 2>/dev/null | wc -l)
-          if [ "$APK_COUNT" -eq 0 ]; then
-            echo "❌ No APK found in bin/ — build may have failed."
-            exit 1
-          fi
-
-      - name: Rename APK with date
+      - name: Rename & store APK
         run: |
           mkdir -p build-apk
           DATE=$(date +'%Y-%m-%d')
-          VERSION="${{ github.event.inputs.build_type }}-${GITHUB_RUN_NUMBER}"
-          APK_NAME="DueDateCalculator-${VERSION}-${DATE}.apk"
+          APK_NAME="DueDateCalculator-${{ github.event.inputs.build_type }}-${GITHUB_RUN_NUMBER}-${DATE}.apk"
           mv bin/*.apk build-apk/$APK_NAME
           echo "✅ APK ready: $APK_NAME"
+          echo "📥 Download link: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}#artifacts"
 
-      - name: Upload APK as Action Artifact
-        id: upload
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: DueDateCalculator-${{ github.event.inputs.build_type }}-APK
+          name: APK-${{ github.event.inputs.build_type }}
           path: build-apk/*.apk
-
-      - name: Print Download Link
-        run: |
-          echo ""
-          echo "📥 **Download your APK here:**"
-          echo "https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}#artifacts"
-          echo ""
-
-      - name: Create GitHub Release (only for release build)
-        if: ${{ github.event.inputs.build_type == 'release' }}
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ github.run_number }}
-          name: Release ${{ github.run_number }}
-          files: build-apk/*.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
