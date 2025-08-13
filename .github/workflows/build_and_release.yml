@@ -10,8 +10,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Set up job
-        run: echo "Starting APK Build..."
+      - name: Start job
+        run: echo "🚀 Starting APK Build & Release..."
 
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -50,17 +50,5 @@ jobs:
           export PATH=$ANDROID_HOME/cmdline-tools/bin:$ANDROID_HOME/cmdline-tools/cmdline-tools/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/33.0.2:$PATH
           buildozer android release
 
-      - name: Rename APK with date
-        run: |
-          mkdir release-apk
-          DATE=$(date +'%Y-%m-%d')
-          mv bin/*.apk release-apk/DueDateCalculator-${DATE}.apk
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ github.run_number }}
-          name: Release ${{ github.run_number }}
-          files: release-apk/*.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify APK output
+        run
