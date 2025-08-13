@@ -1,56 +1,117 @@
-name: Build and Release APK
+name: Build APK (Debug or Release)
 
 on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type (debug/release)'
+        required: false
+        default: 'debug'
   push:
-    branches:
-      - main
+    branches: [main]
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      BUILD_TYPE: ${{ github.event.inputs.build_type || 'debug' }}
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+      GRADLE_USER_HOME: ${{ github.workspace }}/.gradle
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
+
+      - name: Cache Android SDK
+        uses: actions/cache@v4
+        id: android-sdk-cache
+        with:
+          path: ${{ env.ANDROID_SDK_ROOT }}
+          key: android-sdk-33-${{ hashFiles('buildozer.spec') }}
+          restore-keys: android-sdk-33-
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        id: gradle-cache
+        with:
+          path: ${{ env.GRADLE_USER_HOME }}
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*') }}
+          restore-keys: gradle-${{ runner.os }}-
+
+      - name: Cache Buildozer
+        uses: actions/cache@v4
+        id: buildozer-cache
+        with:
+          path: ~/.buildozer
+          key: buildozer-${{ runner.os }}-${{ hashFiles('buildozer.spec') }}
+          restore-keys: buildozer-${{ runner.os }}-
 
       - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            git zip unzip openjdk-17-jdk python3-pip \
-            libffi-dev libssl-dev libsqlite3-dev libjpeg-dev zlib1g-dev
+            git zip unzip openjdk-17-jdk \
+            libffi-dev libssl-dev libsqlite3-dev \
+            libjpeg-dev zlib1g-dev wget
 
-      - name: Install Buildozer
-        run: pip install buildozer cython==0.29.34
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install buildozer cython
 
-      # New step: Use the android-setup action to handle the SDK
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v2
-        with:
-          api-level: 33
-          ndk: 25.1.8937393
-          build-tools: 36.0.0
-          cmake: 3.22.1
+      - name: Install Android SDK
+        if: steps.android-sdk-cache.outputs.cache-hit != 'true'
+        run: |
+          set -e
+          mkdir -p "${{ env.ANDROID_SDK_ROOT }}/cmdline-tools"
+          cd "${{ env.ANDROID_SDK_ROOT }}/cmdline-tools"
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
+          unzip -q cmdline-tools.zip -d latest
+          yes | ${{ env.ANDROID_SDK_ROOT }}/cmdline-tools/latest/bin/sdkmanager --sdk_root="${{ env.ANDROID_SDK_ROOT }}" --licenses
+          ${{ env.ANDROID_SDK_ROOT }}/cmdline-tools/latest/bin/sdkmanager --sdk_root="${{ env.ANDROID_SDK_ROOT }}" \
+            "platform-tools" "platforms;android-33" "build-tools;33.0.2"
 
       - name: Build APK
-        run: buildozer android release
-
-      - name: Rename APK with date
         run: |
-          mkdir -p release-apk
-          DATE=$(date +'%Y-%m-%d')
-          mv bin/*.apk release-apk/DueDateCalculator-${DATE}.apk
+          set -e
+          export PATH="${{ env.ANDROID_SDK_ROOT }}/cmdline-tools/latest/bin:${{ env.ANDROID_SDK_ROOT }}/platform-tools:${{ env.ANDROID_SDK_ROOT }}/build-tools/33.0.2:$PATH"
+          if [ "${{ env.BUILD_TYPE }}" = "release" ]; then
+            buildozer -v android release
+          else
+            buildozer -v android debug
+          fi
+
+      - name: Prepare APK artifact
+        run: |
+          mkdir -p build-apk
+          APK_PATH=$(find bin -name '*.apk' -print -quit)
+          if [ -z "$APK_PATH" ]; then
+            echo "Error: No APK found in bin directory"
+            exit 1
+          fi
+          NEW_NAME="app-${{ env.BUILD_TYPE }}-${{ github.run_number }}-$(date +'%Y%m%d').apk"
+          mv "$APK_PATH" "build-apk/$NEW_NAME"
+          echo "APK_NAME=$NEW_NAME" >> $GITHUB_ENV
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk-${{ env.BUILD_TYPE }}
+          path: build-apk/*.apk
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        if: ${{ env.BUILD_TYPE == 'release' }}
+        uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.0.${{ github.run_number }}
-          name: Release v0.0.${{ github.run_number }}
-          files: release-apk/*.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: v${{ github.run_number }}
+          name: Release ${{ github.run_number }}
+          files: build-apk/*.apk
+          generate_release_notes: true
