@@ -1,0 +1,76 @@
+name: Android Release APK
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            git zip unzip openjdk-17-jdk python3-pip \
+            libffi-dev libssl-dev libsqlite3-dev libjpeg-dev zlib1g-dev wget
+          python -m pip install --upgrade pip
+          pip install buildozer cython
+
+      - name: Install Android SDK (incl. AIDL)
+        run: |
+          mkdir -p "$HOME/android-sdk/cmdline-tools"
+          cd "$HOME/android-sdk/cmdline-tools"
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
+          unzip -q cmdline-tools.zip -d latest
+          export ANDROID_HOME="$HOME/android-sdk"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$PATH"
+          yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses
+          sdkmanager --sdk_root="$ANDROID_HOME" \
+            "platform-tools" \
+            "platforms;android-33" \
+            "build-tools;33.0.2" \
+            "cmdline-tools;latest"
+
+      - name: Build Release APK
+        run: |
+          export ANDROID_HOME="$HOME/android-sdk"
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/33.0.2:$PATH"
+          which aidl || { echo "AIDL not found"; exit 1; }
+          buildozer android release
+
+      - name: Prepare APK
+        run: |
+          mkdir -p build-apk
+          ls -l bin || true
+          APK_COUNT=$(ls bin/*.apk 2>/dev/null | wc -l)
+          if [ "$APK_COUNT" -eq 0 ]; then echo "No APK found in bin/"; exit 1; fi
+          DATE=$(date +'%Y-%m-%d')
+          NEWNAME="DueDateCalculator-release-${GITHUB_RUN_NUMBER}-${DATE}.apk"
+          mv bin/*.apk "build-apk/$NEWNAME"
+          echo "APK_NAME=$NEWNAME" >> "$GITHUB_ENV"
+          echo "Download (after upload): https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}#artifacts"
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: APK-release
+          path: build-apk/*.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Release ${{ github.run_number }}
+          files: build-apk/*.apk
