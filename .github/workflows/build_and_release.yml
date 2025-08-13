@@ -1,35 +1,44 @@
 name: Build APK (Debug or Release)
 
 on:
+  # Manual trigger; choose build type via an env override (see README below)
   workflow_dispatch:
-    inputs:
-      build_type:
-        description: "Choose build type: debug or release"
-        required: true
-        default: debug
+  # Also runs on pushes to main (defaults to debug unless overridden)
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Change BUILD_TYPE to "release" from the UI (see tip below) or it defaults to debug
+    env:
+      BUILD_TYPE: ${{ github.event.inputs.build_type || 'debug' }}
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
-      - name: Install dependencies
+      - name: Install deps
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             git zip unzip openjdk-17-jdk python3-pip \
             libffi-dev libssl-dev libsqlite3-dev libjpeg-dev zlib1g-dev wget
-          pip install --upgrade pip
+          python -m pip install --upgrade pip
           pip install buildozer cython
 
-      - name: Install Android SDK (AIDL fix)
+      - name: Install Android SDK (incl. AIDL)
         run: |
+          set -e
           mkdir -p "$HOME/android-sdk/cmdline-tools"
           cd "$HOME/android-sdk/cmdline-tools"
           wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip -O cmdline-tools.zip
@@ -45,25 +54,43 @@ jobs:
 
       - name: Build APK
         run: |
+          set -e
           export ANDROID_HOME="$HOME/android-sdk"
           export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/build-tools/33.0.2:$PATH"
-          which aidl || { echo "❌ AIDL missing"; exit 1; }
-          if [ "${{ github.event.inputs.build_type }}" = "release" ]; then
+          which aidl || { echo "AIDL missing"; exit 1; }
+          if [ "${BUILD_TYPE}" = "release" ]; then
             buildozer android release
           else
             buildozer android debug
           fi
 
-      - name: Rename & store APK
+      - name: Prepare APK
         run: |
+          set -e
           mkdir -p build-apk
+          ls -l bin || true
+          APK_COUNT=$(ls bin/*.apk 2>/dev/null | wc -l)
+          if [ "$APK_COUNT" -eq 0 ]; then
+            echo "No APK found in bin/"; exit 1
+          fi
           DATE=$(date +'%Y-%m-%d')
-          APK_NAME="DueDateCalculator-${{ github.event.inputs.build_type }}-${GITHUB_RUN_NUMBER}-${DATE}.apk"
-          mv bin/*.apk build-apk/$APK_NAME
-          echo "✅ APK ready: $APK_NAME"
-          echo "📥 Download link: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}#artifacts"
+          NEWNAME="DueDateCalculator-${BUILD_TYPE}-${GITHUB_RUN_NUMBER}-${DATE}.apk"
+          mv bin/*.apk "build-apk/$NEWNAME"
+          echo "APK_NAME=$NEWNAME" >> "$GITHUB_ENV"
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: APK-${{ github.event.inputs.build_type }}
+          name: APK-${{ env.BUILD_TYPE }}
           path: build-apk/*.apk
+
+      - name: Print download link
+        run: echo "Download: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}#artifacts"
+
+      - name: Create GitHub Release (only for release)
+        if: ${{ env.BUILD_TYPE == 'release' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Release ${{ github.run_number }}
+          files: build-apk/*.apk
